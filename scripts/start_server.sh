@@ -11,6 +11,7 @@ set -euo pipefail
 # Environment variables (all optional, CLI args take precedence):
 #   CKPT             Model checkpoint path or HuggingFace ID
 #   PREDICTOR_TYPE   Backend: "hf", "vllm", or "native"
+#   DEVICE           Optional device override (e.g. "mps", "cpu", "cuda:0")
 #   PORT             Server port
 #   TEMPERATURE      Sampling temperature
 #   TOP_P            Top-p sampling
@@ -28,6 +29,7 @@ export TOP_P="${TOP_P:-0.8}"
 echo "Starting MolmoWeb server"
 echo "  Checkpoint:     $CKPT"
 echo "  Backend:        $PREDICTOR_TYPE"
+echo "  Device override:${DEVICE:-auto}"
 echo "  GPU workers:    $NUM_PREDICTORS"
 echo "  Temperature:    $TEMPERATURE"
 echo "  Top-p:          $TOP_P"

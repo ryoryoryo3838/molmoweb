@@ -4,6 +4,7 @@ Inference backends for the multimodal agent.
 All backends implement predict(prompt, image_np, ...) -> str | None.
 Heavy dependencies (torch, olmo) are imported lazily inside each class.
 """
+
 import json
 import logging
 from typing import Any, Optional
@@ -19,6 +20,7 @@ log = logging.getLogger(__name__)
 # FastAPI (remote HTTP endpoint)
 # ---------------------------------------------------------------------------
 
+
 class FastApiActionPredictor:
     def __init__(
         self,
@@ -30,8 +32,15 @@ class FastApiActionPredictor:
         self.temperature = temperature
         self.top_p = top_p
 
-    def predict(self, prompt: str, image_np: np.ndarray, past_actions: list | None = None, **kwargs) -> str | None:
+    def predict(
+        self,
+        prompt: str,
+        image_np: np.ndarray,
+        past_actions: list | None = None,
+        **kwargs,
+    ) -> str | None:
         from utils.vis_utils.image import image_to_base64
+
         try:
             payload = {"prompt": prompt, "image_base64": image_to_base64(image_np)}
             if past_actions is not None:
@@ -41,7 +50,9 @@ class FastApiActionPredictor:
 
             resp = requests.post(f"{self.endpoint}/predict", json=payload)
             if resp.status_code != 200:
-                print(f"[ERROR] FastAPI {self.endpoint} returned {resp.status_code}: {resp.text}")
+                print(
+                    f"[ERROR] FastAPI {self.endpoint} returned {resp.status_code}: {resp.text}"
+                )
                 return None
             return resp.json()
         except Exception as e:
@@ -53,6 +64,7 @@ class FastApiActionPredictor:
 # Modal (serverless HTTP endpoint)
 # ---------------------------------------------------------------------------
 
+
 class ModalActionPredictor:
     def __init__(self, endpoint: str, api_key: str | None = None):
         self.endpoint = endpoint
@@ -60,6 +72,7 @@ class ModalActionPredictor:
 
     def predict(self, prompt: str, image_np: np.ndarray, **kwargs) -> str | None:
         from utils.vis_utils.image import pil_image_to_base64
+
         try:
             headers = {"Content-Type": "application/json"}
             if self.api_key:
@@ -67,10 +80,16 @@ class ModalActionPredictor:
             resp = requests.post(
                 self.endpoint,
                 headers=headers,
-                data=json.dumps({
-                    "input_text": [prompt],
-                    "input_image": [pil_image_to_base64(Image.fromarray(image_np.astype("uint8")).convert("RGB"))],
-                }),
+                data=json.dumps(
+                    {
+                        "input_text": [prompt],
+                        "input_image": [
+                            pil_image_to_base64(
+                                Image.fromarray(image_np.astype("uint8")).convert("RGB")
+                            )
+                        ],
+                    }
+                ),
                 stream=True,
             )
             if resp.status_code != 200:
@@ -92,18 +111,41 @@ class ModalActionPredictor:
 # HuggingFace Transformers (local GPU)
 # ---------------------------------------------------------------------------
 
+
 class HFActionPredictor:
-    def __init__(self, checkpoint: str, device: str | None = None, max_new_tokens: int = 1024):
+    def __init__(
+        self, checkpoint: str, device: str | None = None, max_new_tokens: int = 1024
+    ):
         import torch
         from transformers import AutoProcessor, AutoModelForImageTextToText
 
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.dtype = torch.bfloat16
+        if device is None:
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif (
+                getattr(torch.backends, "mps", None)
+                and torch.backends.mps.is_available()
+            ):
+                device = "mps"
+            else:
+                device = "cpu"
+
+        self.device = device
+        if self.device.startswith("cuda"):
+            self.dtype = torch.bfloat16
+        elif self.device == "mps":
+            self.dtype = torch.float16
+        else:
+            self.dtype = torch.float32
         self.max_new_tokens = max_new_tokens
 
-        self.processor = AutoProcessor.from_pretrained(checkpoint, trust_remote_code=True, padding_side="left")
+        self.processor = AutoProcessor.from_pretrained(
+            checkpoint, trust_remote_code=True, padding_side="left"
+        )
         self.model = AutoModelForImageTextToText.from_pretrained(
-            checkpoint, torch_dtype=self.dtype, trust_remote_code=True,
+            checkpoint,
+            torch_dtype=self.dtype,
+            trust_remote_code=True,
         ).to(self.device)
         self.model.eval()
 
@@ -112,26 +154,41 @@ class HFActionPredictor:
         from molmo_utils import process_vision_info
 
         image = Image.fromarray(image_np.astype("uint8")).convert("RGB")
-        messages = [{"role": "user", "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image", "image": image},
-        ]}]
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image", "image": image},
+                ],
+            }
+        ]
         pil_images, _, _ = process_vision_info(messages)
-        text_input = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = self.processor(images=pil_images, text=text_input, padding=True, return_tensors="pt").to(self.device)
-        inputs = {k: v.to(self.dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
+        text_input = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self.processor(
+            images=pil_images, text=text_input, padding=True, return_tensors="pt"
+        ).to(self.device)
+        inputs = {
+            k: v.to(self.dtype) if torch.is_floating_point(v) else v
+            for k, v in inputs.items()
+        }
 
         with torch.no_grad():
             outputs = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens)
 
-        generated_tokens = outputs[:, inputs["input_ids"].size(1):]
-        text = self.processor.batch_decode(generated_tokens, skip_special_tokens=True)[0].strip()
+        generated_tokens = outputs[:, inputs["input_ids"].size(1) :]
+        text = self.processor.batch_decode(generated_tokens, skip_special_tokens=True)[
+            0
+        ].strip()
         return text or None
 
 
 # ---------------------------------------------------------------------------
 # Native OLMo (local GPU, direct model loading)
 # ---------------------------------------------------------------------------
+
 
 class NativeActionPredictor:
     def __init__(
@@ -154,7 +211,18 @@ class NativeActionPredictor:
         from olmo.train.checkpointer import load_model_state
         from olmo.util import resource_path
 
-        self.device = device or "cuda:0"
+        if device is None:
+            if torch.cuda.is_available():
+                device = "cuda:0"
+            elif (
+                getattr(torch.backends, "mps", None)
+                and torch.backends.mps.is_available()
+            ):
+                device = "mps"
+            else:
+                device = "cpu"
+
+        self.device = device
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
         self.top_p = top_p
@@ -169,8 +237,16 @@ class NativeActionPredictor:
         self.model.eval()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif (
+            getattr(torch.backends, "mps", None)
+            and torch.backends.mps.is_available()
+            and hasattr(torch.mps, "empty_cache")
+        ):
+            torch.mps.empty_cache()
 
-        self.preprocessor = model_cfg.build_preprocessor(for_inference=True, is_training=False)
+        self.preprocessor = model_cfg.build_preprocessor(
+            for_inference=True, is_training=False
+        )
         log.info(f"Loaded native model from {checkpoint} on {self.device}")
 
     def predict(
@@ -183,25 +259,38 @@ class NativeActionPredictor:
         import torch
         from olmo.nn.beam_search import TopPSampler
 
-        image = ([Image.fromarray(img.astype("uint8")).convert("RGB") for img in image_np]
-                 if isinstance(image_np, list)
-                 else Image.fromarray(image_np.astype("uint8")).convert("RGB"))
+        image = (
+            [Image.fromarray(img.astype("uint8")).convert("RGB") for img in image_np]
+            if isinstance(image_np, list)
+            else Image.fromarray(image_np.astype("uint8")).convert("RGB")
+        )
 
         batch = self.preprocessor(dict(image=image, style=style, question=prompt))
         batch["input_ids"] = batch.pop("input_tokens")
         batch.pop("metadata")
-        batch = {k: torch.as_tensor(np.expand_dims(v, 0), device=self.device) for k, v in batch.items()}
+        batch = {
+            k: torch.as_tensor(np.expand_dims(v, 0), device=self.device)
+            for k, v in batch.items()
+        }
 
-        sampler = TopPSampler(p=self.top_p, temperature=self.temperature, with_replacement=False)
+        sampler = TopPSampler(
+            p=self.top_p, temperature=self.temperature, with_replacement=False
+        )
 
         if not hasattr(self, "_logged_sampler"):
-            print(f"[SAMPLING] TopPSampler(p={self.top_p}, temperature={self.temperature})")
+            print(
+                f"[SAMPLING] TopPSampler(p={self.top_p}, temperature={self.temperature})"
+            )
             self._logged_sampler = True
 
         with torch.inference_mode():
-            output = self.model.generate(batch, max_steps=self.max_new_tokens, sampler=sampler, beam_size=1)
+            output = self.model.generate(
+                batch, max_steps=self.max_new_tokens, sampler=sampler, beam_size=1
+            )
 
         tokens = output.token_ids[0][0]
-        result = self.preprocessor.preprocessor.text_preprocessor.tokenizer.decode(tokens).strip()
+        result = self.preprocessor.preprocessor.text_preprocessor.tokenizer.decode(
+            tokens
+        ).strip()
 
         return result

@@ -23,6 +23,8 @@ dependencies = [
     "molmo-utils>=0.0.1",
     "torchmetrics>=1.0.0",
     "backoff>=2.0.0",
+    "marimo>=0.21.1",
+    "pyright>=1.1.408",
 ]
 
 [tool.isort]

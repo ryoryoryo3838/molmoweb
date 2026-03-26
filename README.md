@@ -112,6 +112,7 @@ Or configure via environment variables:
 export CKPT="./checkpoints/MolmoWeb-4B-Native"   # local path to downloaded weights
 export PREDICTOR_TYPE="native"             # "native" or "hf"
 export NUM_PREDICTORS=1                    # number of GPU workers
+export DEVICE="mps"                       # optional: force device (mps/cpu/cuda:0)
 
 bash scripts/start_server.sh
 ```
@@ -225,6 +226,45 @@ client.close()
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE) for details.
+
+## デフォルト実装からの変更点（ローカル）
+
+この作業ツリーでは、デフォルトの MolmoWeb コードに対して主に以下を変更しています。
+
+- `agent/fastapi_model_server.py`
+  - `DEVICE` 環境変数によるデバイス明示指定（例: `mps` / `cpu` / `cuda:0`）に対応。
+  - `CKPT` 未指定時に明示的にエラーを出すように変更。
+  - Predictor のデバイス割り当てを `cuda` / `mps` / `cpu` の可用性に応じて自動化。
+- `agent/model_backends.py`
+  - HF / Native バックエンドで `mps` / `cpu` を含むデバイス自動選択を追加。
+  - デバイスに応じた dtype（`bfloat16` / `float16` / `float32`）の切り替えを追加。
+  - Native 側で `mps` 利用時のキャッシュクリア処理を追加。
+- `scripts/start_server.sh`
+  - `DEVICE` の説明と起動時ログ表示を追加（デバイス上書き確認用）。
+- `pyproject.toml` / `uv.lock`
+  - 依存関係として `marimo` と `pyright` を追加し、ロックファイルを更新。
+- `inference/htmls/trajectory.html`
+  - トラジェクトリ表示 HTML を見やすいレイアウトに更新（ステップ表示・スタイル調整）。
+
+### macOS に未対応だった理由と、対応できた変更点
+
+- 未対応だった主因
+  - 既定のデバイス前提が CUDA 寄りで、GPU が見つからない環境（Apple Silicon の `mps` / CPU）へのフォールバックが弱かった。
+  - 一部実装でデバイス・dtype の選択ロジックが固定的で、CUDA 前提の設定がそのまま使われやすかった。
+  - 起動スクリプト側で「どのデバイスで動かすか」を明示指定しづらく、macOS での運用パラメータが見えにくかった。
+
+- 今回の対応内容（どう直したか）
+  - サーバ起動時に `DEVICE` 環境変数を受け取り、`mps` / `cpu` / `cuda:0` を明示的に指定可能にした。
+  - `DEVICE` 未指定時は、`cuda` → `mps` → `cpu` の順で可用性を判定して自動選択するようにした。
+  - HF バックエンドではデバイス別に dtype を切り替え（CUDA=`bfloat16`, MPS=`float16`, CPU=`float32`）るようにした。
+  - Native バックエンドでも同様に `mps`/`cpu` を選べるようにし、`mps` 利用時のキャッシュクリア処理も追加した。
+  - `scripts/start_server.sh` に `DEVICE` の説明と起動時ログを追加し、macOS での設定確認を容易にした。
+
+- 使い方（macOS の例）
+  - `DEVICE=mps bash scripts/start_server.sh ./checkpoints/MolmoWeb-8B`
+  - `DEVICE=cpu bash scripts/start_server.sh ./checkpoints/MolmoWeb-8B`
+
+補足: ローカルには `checkpoints/` や `seimiya/` などの未追跡ファイルも存在します（実験用・作業用）。
 
 ## TODO
 
