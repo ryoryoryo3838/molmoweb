@@ -223,9 +223,6 @@ client.close()
 
 ---
 
-## License
-
-Apache 2.0. See [LICENSE](LICENSE) for details.
 
 ## デフォルト実装からの変更点（ローカル）
 
@@ -263,6 +260,10 @@ Apache 2.0. See [LICENSE](LICENSE) for details.
 
 補足: ローカルには `checkpoints/` や `seimiya/` などの未追跡ファイルも存在します（実験用・作業用）。
 -->
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE) for details.
 ## TODO
 
 - [x] Inference
