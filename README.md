@@ -241,10 +241,7 @@ Apache 2.0. See [LICENSE](LICENSE) for details.
   - Native 側で `mps` 利用時のキャッシュクリア処理を追加。
 - `scripts/start_server.sh`
   - `DEVICE` の説明と起動時ログ表示を追加（デバイス上書き確認用）。
-- `pyproject.toml` / `uv.lock`
-  - 依存関係として `marimo` と `pyright` を追加し、ロックファイルを更新。
-- `inference/htmls/trajectory.html`
-  - トラジェクトリ表示 HTML を見やすいレイアウトに更新（ステップ表示・スタイル調整）。
+
 <!--
 ### macOS に未対応だった理由と、対応できた変更点
 
