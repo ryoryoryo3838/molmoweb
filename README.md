@@ -245,7 +245,7 @@ Apache 2.0. See [LICENSE](LICENSE) for details.
   - 依存関係として `marimo` と `pyright` を追加し、ロックファイルを更新。
 - `inference/htmls/trajectory.html`
   - トラジェクトリ表示 HTML を見やすいレイアウトに更新（ステップ表示・スタイル調整）。
-
+<!--
 ### macOS に未対応だった理由と、対応できた変更点
 
 - 未対応だった主因
@@ -265,7 +265,7 @@ Apache 2.0. See [LICENSE](LICENSE) for details.
   - `DEVICE=cpu bash scripts/start_server.sh ./checkpoints/MolmoWeb-8B`
 
 補足: ローカルには `checkpoints/` や `seimiya/` などの未追跡ファイルも存在します（実験用・作業用）。
-
+-->
 ## TODO
 
 - [x] Inference
